@@ -768,9 +768,11 @@ export async function publishItems(itemIds, { fetchImpl = fetch } = {}) {
 export async function archiveItems(itemIds, { fetchImpl = fetch } = {}) {
   if (itemIds.length === 0) return
 
-  const query = itemIds.map((id) => `itemIds=${encodeURIComponent(id)}`).join('&')
-  await request(`/collections/${COLLECTION_ID}/items/live?${query}`, {
+  // O unpublish quer os itens no BODY (`items`), nao em query string.
+  // (Descoberto na execucao real: query string devolve 400 validation_error.)
+  await request(`/collections/${COLLECTION_ID}/items/live`, {
     method: 'DELETE',
+    body: { items: itemIds.map((id) => ({ id })) },
     fetchImpl,
   })
 
