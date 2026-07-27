@@ -162,15 +162,24 @@ Gatilhos adicionais:
 `DRY_RUN=1` imprime o plano sem escrever. A primeira execução é assim, e o plano é revisado
 antes de o cron ser ligado.
 
-O plano inicial inclui a limpeza do estado atual:
+Estado em 2026-07-27: 4 vagas no Ashby, 22 itens na CMS — 5 ativos e 17 já arquivados. O plano
+da primeira rodada, calculado sobre esses dados:
 
-- `Sr Manager, Corporate Development` — sai de Draft e vira item publicado
-- `Manager, Underwriting Strategy & Operations` — arquivada
-- duplicata com `ashby-job-id` truncado — arquivada
-- os 15 itens velhos já arquivados — intocados
+| Ação | Item |
+|---|---|
+| nada | Strategic Finance Manager |
+| nada | Compliance Analyst |
+| nada | Senior Fleet Underwriter |
+| atualizar + publicar | Sr Manager, Corporate Development (sai de Draft) |
+| arquivar | Manager, Underwriting Strategy & Operations (fechada no Ashby) |
+| — | nenhuma vaga a criar |
 
-Essa primeira rodada dispara a guarda 3 (mais de 5 arquivamentos), que é o comportamento
-desejado: a limpeza passa por revisão humana com `FORCE=1`, não acontece sozinha.
+Os 17 itens já arquivados ficam intocados, inclusive a duplicata de `ashby-job-id` truncado
+(`d6784-…`), que já está arquivada e portanto é no-op. O ID corrompido não volta a causar dano
+porque o casamento é por igualdade exata: ele simplesmente nunca casa com nada do Ashby.
+
+A guarda 3 **não** dispara nessa rodada — é um único arquivamento, bem abaixo do limite de 5.
+`FORCE=1` não é necessário.
 
 ## Dependências externas
 
