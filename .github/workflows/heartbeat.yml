@@ -1,0 +1,24 @@
+# O GitHub desativa cron de repositorio sem atividade ha 60 dias. O sync so commita
+# quando ha mudanca, entao um periodo calmo poderia matar o agendamento.
+name: heartbeat
+
+on:
+  schedule:
+    - cron: '0 6 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          date -u +'%Y-%m-%dT%H:%M:%SZ' > state/heartbeat.txt
+          git config user.name 'nirvana-careers-sync'
+          git config user.email 'actions@github.com'
+          git add state/heartbeat.txt
+          git commit -m "chore: heartbeat [skip ci]"
+          git push

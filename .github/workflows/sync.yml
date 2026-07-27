@@ -1,0 +1,54 @@
+name: sync
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'So mostrar o plano, sem escrever'
+        type: boolean
+        default: false
+      force:
+        description: 'Ignorar a guarda de arquivamento em massa'
+        type: boolean
+        default: false
+  repository_dispatch:
+    types: [sync]
+
+permissions:
+  contents: write
+
+# Duas rodadas simultaneas brigariam pela mesma collection.
+concurrency:
+  group: sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - run: node --test
+
+      - name: Sincronizar
+        env:
+          WEBFLOW_TOKEN: ${{ secrets.WEBFLOW_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+          FORCE: ${{ inputs.force && '1' || '0' }}
+        run: node src/index.js
+
+      - name: Commitar state, se mudou
+        run: |
+          if [ -n "$(git status --porcelain state/)" ]; then
+            git config user.name 'nirvana-careers-sync'
+            git config user.email 'actions@github.com'
+            git add state/
+            git commit -m "chore: state do sync [skip ci]"
+            git push
+          fi
