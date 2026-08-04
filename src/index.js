@@ -1,8 +1,16 @@
 import { writeFile, appendFile, mkdir } from 'node:fs/promises'
 import { fetchJobs } from './ashby.js'
 import { toFieldData } from './transform.js'
-import { buildPlan, assertArchiveLimit, isEmptyPlan } from './reconcile.js'
-import { listItems, createItems, updateItems, publishItems, archiveItems } from './webflow.js'
+import { buildPlan, assertArchiveLimit, assertUnpublishLimit, isEmptyPlan } from './reconcile.js'
+import {
+  listItems,
+  listLiveItems,
+  createItems,
+  updateItems,
+  publishItems,
+  archiveItems,
+  unpublishItems,
+} from './webflow.js'
 
 const DRY_RUN = process.env.DRY_RUN === '1'
 const FORCE = process.env.FORCE === '1'
@@ -12,6 +20,7 @@ function renderPlan(plan) {
   for (const fieldData of plan.create) lines.push(`  CRIAR      ${fieldData.name}`)
   for (const { fieldData } of plan.update) lines.push(`  ATUALIZAR  ${fieldData.name}`)
   for (const { name } of plan.archive) lines.push(`  ARQUIVAR   ${name}`)
+  for (const { itemId, name } of plan.unpublish) lines.push(`  DESPUBLICAR ${name} (${itemId})`)
   lines.push(`  (sem mudanca: ${plan.unchanged.length})`)
   return lines.join('\n')
 }
@@ -25,6 +34,7 @@ async function writeSummary(plan) {
     `| criadas | ${plan.create.length} |\n` +
     `| atualizadas | ${plan.update.length} |\n` +
     `| arquivadas | ${plan.archive.length} |\n` +
+    `| despublicadas | ${plan.unpublish.length} |\n` +
     `| sem mudanca | ${plan.unchanged.length} |\n\n` +
     (isEmptyPlan(plan) ? '' : '```\n' + renderPlan(plan) + '\n```\n')
   await appendFile(path, summary)
@@ -43,6 +53,7 @@ async function writeState(plan) {
         criadas: plan.create.map((f) => f.name),
         atualizadas: plan.update.map((u) => u.fieldData.name),
         arquivadas: plan.archive.map((a) => a.name),
+        despublicadas: plan.unpublish.map((u) => u.name),
         semMudanca: plan.unchanged.length,
       },
       null,
@@ -64,18 +75,22 @@ async function apply(plan) {
 
   await publishItems([...idsCriados, ...plan.update.map((u) => u.itemId)])
   await archiveItems(plan.archive.map((a) => a.itemId))
+  await unpublishItems(plan.unpublish.map((u) => u.itemId))
 }
 
 async function main() {
   const jobs = await fetchJobs()
   const desired = jobs.map(toFieldData)
-  const items = await listItems()
-  const plan = buildPlan(desired, items)
+  const [items, liveItems] = await Promise.all([listItems(), listLiveItems()])
+  const plan = buildPlan(desired, items, liveItems)
 
-  console.log(`Ashby: ${jobs.length} vagas | CMS: ${items.length} itens`)
+  console.log(
+    `Ashby: ${jobs.length} vagas | CMS staged: ${items.length} itens | CMS live: ${liveItems.length} itens`
+  )
   console.log(renderPlan(plan))
 
   assertArchiveLimit(plan, { force: FORCE })
+  assertUnpublishLimit(plan, { force: FORCE })
 
   if (DRY_RUN) {
     console.log('\nDRY_RUN=1 — nada foi escrito.')

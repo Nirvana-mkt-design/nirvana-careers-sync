@@ -48,16 +48,14 @@ async function request(path, { method = 'GET', body, fetchImpl = fetch } = {}) {
   throw lastError
 }
 
-export async function listItems({ fetchImpl = fetch } = {}) {
+async function listPaginated(path, { fetchImpl = fetch } = {}) {
   const items = []
   const limit = 100
   let offset = 0
 
   while (true) {
-    const page = await request(
-      `/collections/${COLLECTION_ID}/items?limit=${limit}&offset=${offset}`,
-      { fetchImpl }
-    )
+    const sep = path.includes('?') ? '&' : '?'
+    const page = await request(`${path}${sep}limit=${limit}&offset=${offset}`, { fetchImpl })
     items.push(...(page.items ?? []))
 
     const total = page.pagination?.total ?? items.length
@@ -66,6 +64,17 @@ export async function listItems({ fetchImpl = fetch } = {}) {
   }
 
   return items
+}
+
+// Lista STAGED: o que a CMS tem, publicado ou nao.
+export async function listItems({ fetchImpl = fetch } = {}) {
+  return listPaginated(`/collections/${COLLECTION_ID}/items`, { fetchImpl })
+}
+
+// Lista LIVE: o que o visitante realmente ve. Divergir do staged e normal (item
+// editado e nao publicado); o que nao pode e ter item vivo sem dono no staged.
+export async function listLiveItems({ fetchImpl = fetch } = {}) {
+  return listPaginated(`/collections/${COLLECTION_ID}/items/live`, { fetchImpl })
 }
 
 export async function createItems(fieldDataList, { fetchImpl = fetch } = {}) {
@@ -102,9 +111,8 @@ export async function publishItems(itemIds, { fetchImpl = fetch } = {}) {
   })
 }
 
-// Arquivar = tirar do ar e marcar isArchived. NUNCA deletar: delete na Data API
-// e irreversivel, e o efeito para o visitante e identico.
-export async function archiveItems(itemIds, { fetchImpl = fetch } = {}) {
+// Tira do ar sem mexer no staged. Reversivel: basta publicar de novo.
+export async function unpublishItems(itemIds, { fetchImpl = fetch } = {}) {
   if (itemIds.length === 0) return
 
   // O unpublish quer os itens no BODY (`items`), nao em query string.
@@ -113,6 +121,14 @@ export async function archiveItems(itemIds, { fetchImpl = fetch } = {}) {
     body: { items: itemIds.map((id) => ({ id })) },
     fetchImpl,
   })
+}
+
+// Arquivar = tirar do ar e marcar isArchived. NUNCA deletar: delete na Data API
+// e irreversivel, e o efeito para o visitante e identico.
+export async function archiveItems(itemIds, { fetchImpl = fetch } = {}) {
+  if (itemIds.length === 0) return
+
+  await unpublishItems(itemIds, { fetchImpl })
 
   await request(`/collections/${COLLECTION_ID}/items`, {
     method: 'PATCH',

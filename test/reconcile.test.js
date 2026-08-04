@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildPlan, assertArchiveLimit, isEmptyPlan } from '../src/reconcile.js'
+import { buildPlan, assertArchiveLimit, assertUnpublishLimit, isEmptyPlan } from '../src/reconcile.js'
 
 // Helper: monta um fieldData completo com o minimo de ruido no teste.
 function fd(id, overrides = {}) {
@@ -84,6 +84,60 @@ test('ashby-job-id corrompido nao casa com nada e o item e tratado como ausente'
   assert.equal(plan.create.length, 1)
   assert.equal(plan.archive.length, 1)
   assert.equal(plan.archive[0].itemId, 'item-velho')
+})
+
+// --- Fantasmas: itens vivos no site que o staged nao explica ---
+//
+// O bug do card duplicado da Corp Dev (2026-08-04): o staged tinha UM item da vaga,
+// o site mostrava DOIS. O segundo so existia na lista live. Reconciliar so contra o
+// staged nao consegue nem enxergar esse item, muito menos tirar do ar.
+
+test('item vivo que nao existe no staged entra em unpublish', () => {
+  const plan = buildPlan([fd('a')], [item('item-1', fd('a'))], [
+    item('item-1', fd('a')),
+    item('fantasma', fd('a', { department: 'R&D' })),
+  ])
+  assert.equal(plan.unpublish.length, 1)
+  assert.equal(plan.unpublish[0].itemId, 'fantasma')
+  assert.equal(plan.archive.length, 0)
+})
+
+test('item vivo cuja vaga sumiu do Ashby entra em unpublish mesmo estando arquivado no staged', () => {
+  // Este e o estado exato que o `if (item.isArchived) continue` deixava passar:
+  // arquivado no staged (logo, ignorado) mas ainda publicado no site.
+  const plan = buildPlan([], [item('item-1', fd('a'), { isArchived: true })], [item('item-1', fd('a'))])
+  assert.equal(plan.archive.length, 0)
+  assert.equal(plan.unpublish.length, 1)
+  assert.equal(plan.unpublish[0].itemId, 'item-1')
+})
+
+test('item vivo que corresponde a vaga aberta nao entra em unpublish', () => {
+  const plan = buildPlan([fd('a')], [item('item-1', fd('a'))], [item('item-1', fd('a'))])
+  assert.equal(plan.unpublish.length, 0)
+  assert.deepEqual(plan.unchanged, ['item-1'])
+})
+
+test('item que ja vai ser arquivado nao aparece tambem em unpublish', () => {
+  // archiveItems ja despublica antes de arquivar. Listar nos dois lugares faria
+  // a mesma chamada duas vezes.
+  const plan = buildPlan([], [item('item-1', fd('a'))], [item('item-1', fd('a'))])
+  assert.equal(plan.archive.length, 1)
+  assert.equal(plan.unpublish.length, 0)
+})
+
+test('sem lista live o plano continua valido e sem unpublish', () => {
+  const plan = buildPlan([fd('a')], [item('item-1', fd('a'))])
+  assert.deepEqual(plan.unpublish, [])
+})
+
+test('isEmptyPlan considera unpublish', () => {
+  assert.equal(isEmptyPlan({ create: [], update: [], archive: [], unpublish: [{}], unchanged: [] }), false)
+})
+
+test('assertUnpublishLimit aborta acima de 5 e libera com force', () => {
+  const plan = { unpublish: Array.from({ length: 6 }, (_, i) => ({ itemId: `i${i}`, name: `n${i}` })) }
+  assert.throws(() => assertUnpublishLimit(plan), /despublicar 6/)
+  assert.doesNotThrow(() => assertUnpublishLimit(plan, { force: true }))
 })
 
 test('assertArchiveLimit deixa passar ate 5 arquivamentos', () => {

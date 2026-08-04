@@ -6,6 +6,10 @@ export const WEBFLOW_API = 'https://api.webflow.com/v2'
 // Acima disso o sync aborta: arquivamento em massa quase sempre e falha de leitura.
 export const MAX_ARCHIVE_PER_RUN = 5
 
+// Mesma logica para o que sai do ar. Despublicar em massa apaga a pagina inteira
+// para o visitante, entao a guarda aqui importa ainda mais que a do arquivamento.
+export const MAX_UNPUBLISH_PER_RUN = 5
+
 // Os unicos campos que o sync gerencia. Comparacao e escrita se limitam a eles.
 export const MANAGED_FIELDS = [
   'name',
